@@ -1,7 +1,16 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Link } from "react-router"
 import { useLanguage } from "./Language"
 import { useStoreData } from "./StoreData"
+
+interface DropCollection {
+  name: string
+  slug: string
+  subtitle: string
+  image: string
+  label: string
+  active: boolean
+}
 
 export default function Collections({
   embedded = false,
@@ -9,15 +18,73 @@ export default function Collections({
   embedded?: boolean
 }) {
   const { drops } = useStoreData()
-  const collections = drops.filter((drop) => drop.active)
   const { translate } = useLanguage()
   const [active, setActive] = useState(0)
+
+  // 1. Cargar y sincronizar con lo guardado en el Admin (localStorage)
+  const [collections, setCollections] = useState<DropCollection[]>(() => {
+    const saved = localStorage.getItem("gs_colecciones")
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        // Filtrar solo las activas y mapear campos del Admin al formato del carrusel
+        return parsed
+          .filter((item: any) => item.activa ?? item.active ?? true)
+          .map((item: any) => ({
+            name: item.nombre || item.name,
+            slug: item.slug || (item.nombre || item.name || "").toLowerCase().replace(/\s+/g, "-"),
+            subtitle: item.subtitulo || item.subtitle || "",
+            image: item.portadaUrl || item.image || "",
+            label: item.label || "ESENCIALES DE LA COSTA",
+            active: item.activa ?? item.active ?? true,
+          }))
+      } catch (e) {
+        console.error("Error al cargar colecciones de localStorage:", e)
+      }
+    }
+    // Fallback a los datos iniciales de StoreData
+    return drops.filter((drop) => drop.active)
+  })
+
+  // 2. Escuchar cambios de StoreData o recargas
+  useEffect(() => {
+    const saved = localStorage.getItem("gs_colecciones")
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        const filtered = parsed
+          .filter((item: any) => item.activa !== false && item.active !== false)
+          .map((item: any) => ({
+            name: item.nombre || item.name,
+            slug: item.slug || (item.nombre || item.name || "").toLowerCase().replace(/\s+/g, "-"),
+            subtitle: item.subtitulo || item.subtitle || "",
+            image: item.portadaUrl || item.image || "",
+            label: item.label || "ESENCIALES DE LA COSTA",
+            active: item.activa ?? item.active ?? true,
+          }))
+        if (filtered.length > 0) {
+          setCollections(filtered)
+          return
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    setCollections(drops.filter((drop) => drop.active))
+  }, [drops])
+
+  // Si no hay colecciones activas, no renderiza la sección
   if (!collections.length) return null
+
+  // Control de índice seguro por si se desactiva una colección mientras está seleccionada
+  const safeActiveIndex = active >= collections.length ? 0 : active
+
   const move = (direction: number) =>
     setActive(
       (current) =>
         (current + direction + collections.length) % collections.length,
     )
+
   return translate(
     <section
       id={embedded ? "collections" : undefined}
@@ -48,7 +115,7 @@ export default function Collections({
       >
         {collections.map((collection, index) => {
           const offset =
-            (index - active + collections.length) % collections.length
+            (index - safeActiveIndex + collections.length) % collections.length
           const position =
             offset === 0
               ? "center"
@@ -100,15 +167,16 @@ export default function Collections({
       </div>
       <div className="collection-pagination">
         <span aria-live="polite">
-          0{active + 1} — {collections[active].label}
+          {String(safeActiveIndex + 1).padStart(2, "0")} —{" "}
+          {collections[safeActiveIndex]?.label || "ESENCIALES DE LA COSTA"}
         </span>
         <div>
           {collections.map((collection, index) => (
             <button
               key={collection.name}
               aria-label={`Ver ${collection.name}`}
-              aria-pressed={index === active}
-              className={index === active ? "active" : ""}
+              aria-pressed={index === safeActiveIndex}
+              className={index === safeActiveIndex ? "active" : ""}
               onClick={() => setActive(index)}
             />
           ))}

@@ -17,7 +17,8 @@ import Admin from "./Admin"
 const photo = (id: string, width = 1400) =>
   `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${width}&q=85`
 const surf = photo("1636353990836-b20b196dd41e", 2400)
-const products: Product[] = [
+
+const defaultProducts: Product[] = [
   {
     name: "The Everyday Cap",
     color: "Stone / Unstructured",
@@ -51,87 +52,19 @@ const products: Product[] = [
     image: "/images/stay-real-cap.png",
     lifestyle: "/images/stay-real-cap.png",
   },
-  {
-    name: "Sun Faded Cap",
-    color: "Golden / Everyday essentials",
-    price: 100,
-    category: "Accesorios",
-    size: "Única · Ajustable",
-    isNew: true,
-    bestseller: false,
-    image: photo("1645266729222-17cd32e06fd0", 800),
-    lifestyle: surf,
-  },
-  {
-    name: "Dawn Patrol Wetsuit",
-    color: "Asphalt / Neopreno 3/2 mm",
-    price: 650,
-    category: "Merch",
-    size: "M · 3/2 mm",
-    isNew: true,
-    bestseller: true,
-    image: photo("1526342256246-b67e94be5c79", 800),
-    lifestyle: photo("1597382048067-7923725a1524", 800),
-  },
-  {
-    name: "Saltwater Session Suit",
-    color: "Black / Neopreno 4/3 mm",
-    price: 780,
-    category: "Merch",
-    size: "M · 4/3 mm",
-    isNew: false,
-    bestseller: true,
-    image: photo("1438505296047-83ae9945bf15", 800),
-    lifestyle: photo("1559628234-d70bb7959a92", 800),
-  },
-  {
-    name: "Coastline Tee",
-    color: "Chalk / Algodón orgánico",
-    price: 110,
-    category: "Merch",
-    size: "M · Relaxed fit",
-    isNew: false,
-    bestseller: false,
-    image: photo("1521572163474-6864f9cf17ab", 800),
-    lifestyle: photo("1503341504253-dff4815485f1", 800),
-  },
-  {
-    name: "Wave Rider Board",
-    color: "Ocean / Shortboard 6′2″",
-    price: 1450,
-    category: "Accesorios",
-    size: "6′2″ · Shortboard",
-    isNew: false,
-    bestseller: true,
-    image: photo("1597382048067-7923725a1524", 800),
-    lifestyle: surf,
-  },
-  {
-    name: "Tide Beach Towel",
-    color: "Salvia / Algodón suave",
-    price: 95,
-    category: "Accesorios",
-    size: "90 × 180 cm",
-    sizes: ["90 × 180 cm"],
-    isNew: true,
-    bestseller: false,
-    image: photo("1523471826770-c437b4636fe6", 800),
-    lifestyle: photo("1521170813716-0b3f42fcfb65", 800),
-  },
-  {
-    name: "Daybreak Surf Backpack",
-    color: "Negro / Mochila 25 L",
-    price: 180,
-    category: "Accesorios",
-    size: "25 L",
-    sizes: ["25 L"],
-    isNew: true,
-    bestseller: true,
-    image: photo("1553062407-98eeb64c6a62", 800),
-    lifestyle: surf,
-  },
 ]
-function Icon({ name, size = 20 }: { name: string size?: number }) {
+
+// Conversor dinámico para enlaces o IDs de YouTube
+function getYouTubeEmbed(input: string): string {
+  const fallbackId = "9Jbam0F4Jj8" // Film oficial de surf WSL
+  if (!input) return `https://www.youtube.com/embed/${fallbackId}?autoplay=1&rel=0`
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/
+  const match = input.match(regExp)
+  const videoId = match && match[2].length === 11 ? match[2] : input.trim()
+  return `https://www.youtube.com/embed/${videoId || fallbackId}?autoplay=1&rel=0`
+}
+
+function Icon({ name, size = 20 }: { name: string; size?: number }) {
   return (
     <svg
       width={size}
@@ -169,43 +102,55 @@ function Icon({ name, size = 20 }: { name: string size?: number }) {
     </svg>
   )
 }
+
 function Storefront() {
   const { products, addSale } = useStoreData()
   const { language, setLanguage, translate, t } = useLanguage()
   const [selectedSize, setSelectedSize] = useState("")
   const location = useLocation()
   const navigate = useNavigate()
+
   const home = location.pathname === "/"
   const isCollections = location.pathname === "/collections"
-  const isCheckout =
-    location.pathname === "/checkout" || location.pathname === "/confirmation"
+  const isCheckout = location.pathname === "/checkout" || location.pathname === "/confirmation"
+
   const [order, setOrder] = useState<DemoOrder | null>(null)
   const [scrolled, setScrolled] = useState(false)
   const [panel, setPanel] = useState<string | null>(null)
-  const [cart, setCart] = useState<{ index: number size: string }[]>([])
+  const [cart, setCart] = useState<{ index: number; size: string }[]>([])
   const [selected, setSelected] = useState<number | null>(null)
   const [query, setQuery] = useState("")
   const [subscribed, setSubscribed] = useState(false)
   const [video, setVideo] = useState(false)
+
+  // URL del video de YouTube (permite sobreescritura dinámica desde el storage)
+  const [youtubeSource] = useState<string>(() => {
+    return localStorage.getItem("gs_youtube_video") || "https://www.youtube.com/watch?v=9Jbam0F4Jj8"
+  })
+
   const rail = useRef<HTMLDivElement>(null)
   const heroImage = useRef<HTMLImageElement>(null)
+
   const subtotalCents = cart.reduce(
-    (sum, item) => sum + Math.round(products[item.index].price * 100),
+    (sum, item) => sum + Math.round(products[item.index]?.price * 100 || 0),
     0,
   )
   const subtotal = subtotalCents / 100
+
   const sizeOptions =
     selected === null
       ? []
-      : products[selected].sizes ||
-        (products[selected].category === "Merch"
+      : products[selected]?.sizes ||
+        (products[selected]?.category === "Merch"
           ? ["S", "M", "L", "XL"]
-          : products[selected].name.includes("Board")
+          : products[selected]?.name.includes("Board")
             ? ["6′2″"]
             : ["Única"])
+
   useEffect(() => {
     setSelectedSize("")
   }, [selected])
+
   useEffect(() => {
     setPanel(null)
     setSelected(null)
@@ -215,14 +160,13 @@ function Storefront() {
       )
     } else window.scrollTo({ top: 0, behavior: "instant" })
   }, [location.pathname, location.hash])
+
   useEffect(() => {
     const scroll = () => {
       setScrolled(window.scrollY > 60)
-      if (
-        heroImage.current &&
-        !window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      )
+      if (heroImage.current && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         heroImage.current.style.transform = `translateY(${Math.min(window.scrollY * 0.18, 200)}px) scale(1.05)`
+      }
     }
     window.addEventListener("scroll", scroll, { passive: true })
     const observer = new IntersectionObserver(
@@ -235,17 +179,15 @@ function Storefront() {
         }),
       { threshold: 0.08 },
     )
-    document
-      .querySelectorAll(".reveal")
-      .forEach((element) => observer.observe(element))
+    document.querySelectorAll(".reveal").forEach((element) => observer.observe(element))
     return () => {
       window.removeEventListener("scroll", scroll)
       observer.disconnect()
     }
   }, [location.pathname])
+
   useEffect(() => {
-    document.body.style.overflow =
-      panel || selected !== null || video ? "hidden" : ""
+    document.body.style.overflow = panel || selected !== null || video ? "hidden" : ""
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setPanel(null)
@@ -259,6 +201,12 @@ function Storefront() {
       window.removeEventListener("keydown", escape)
     }
   }, [panel, selected, video])
+
+  // FILTRADO EXACTO: Accesorios para el carrusel de inicio
+  const accessoryProducts = products
+    .map((product, index) => ({ product, index }))
+    .filter(({ product }) => (product.category || "").trim().toLowerCase() === "accesorios")
+
   return translate(
     <>
       <header
@@ -287,9 +235,7 @@ function Storefront() {
             <select
               aria-label={t("Idioma")}
               value={language}
-              onChange={(event) =>
-                setLanguage(event.target.value as "ES" | "EN" | "FR")
-              }
+              onChange={(event) => setLanguage(event.target.value as "ES" | "EN" | "FR")}
             >
               <option value="ES">ES</option>
               <option value="EN">EN</option>
@@ -317,6 +263,7 @@ function Storefront() {
           </button>
         </div>
       </header>
+
       <main>
         {home && (
           <>
@@ -343,6 +290,7 @@ function Storefront() {
                 <span>EST. BY THE OCEAN · 2024</span>
               </div>
             </section>
+
             <div className="manifesto-strip">
               <span>NO SIGNAL. NO PROBLEM.</span>
               <span className="little-star">✳</span>
@@ -353,35 +301,40 @@ function Storefront() {
               <span>GONE SURFING.</span>
             </div>
             <section className="home-drops reveal" id="arrivals">
-              <Link className="drop-block" to="/shop">
-                <img
-                  src={surf}
-                  alt="Nueva colección de surf junto a la costa"
-                  loading="lazy"
-                />
-                <span className="eyebrow">THE LATEST DROP / 026</span>
-                <div>
-                  <h2>New arrivals</h2>
-                  <span>
-                    FRESH OUT OF THE WATER <Icon name="arrow" />
-                  </span>
-                </div>
-              </Link>
-              <Link className="drop-block merch-drop" to="/shop?category=Merch">
-                <img
-                  src={photo("1526342256246-b67e94be5c79")}
-                  alt="Modelo con wetsuit surfeando una ola"
-                  loading="lazy"
-                />
-                <span className="eyebrow">WEAR THE MINDSET</span>
-                <div>
-                  <h2>Merch</h2>
-                  <span>
-                    MADE FOR THE DAYS IN BETWEEN <Icon name="arrow" />
-                  </span>
-                </div>
-              </Link>
-            </section>
+              
+          <Link className="drop-block" to="/shop?category=Nuevos%20Ingresos">
+            <img
+              src={surf}
+              alt="Nueva colección de surf junto a la costa"
+              loading="lazy"
+            />
+            <span className="eyebrow">THE LATEST DROP / 026</span>
+            <div>
+              <h2>New arrivals</h2>
+              <span>
+                FRESH OUT OF THE WATER <Icon name="arrow" />
+              </span>
+            </div>
+          </Link>
+
+          {/* Bloque Merch (permanece igual) */}
+          <Link className="drop-block merch-drop" to="/shop?category=Merch">
+            <img
+              src={photo("1526342256246-b67e94be5c79")}
+              alt="Modelo con wetsuit surfeando una ola"
+              loading="lazy"
+            />
+            <span className="eyebrow">WEAR THE MINDSET</span>
+            <div>
+              <h2>Merch</h2>
+              <span>
+                MADE FOR THE DAYS IN BETWEEN <Icon name="arrow" />
+              </span>
+            </div>
+          </Link>
+        </section>
+
+            {/* SECCIÓN CORREGIDA: Accesorios para desconectar */}
             <section className="shop-section reveal" id="shop">
               <div className="section-heading">
                 <div>
@@ -392,66 +345,61 @@ function Storefront() {
                   </h2>
                 </div>
                 <div className="shop-controls">
-                  <Link to="/shop">
+                  <Link to="/shop?category=Accesorios">
                     SHOP ALL <Icon name="arrow" size={17} />
                   </Link>
                   <button
                     aria-label="Productos anteriores"
-                    onClick={() =>
-                      rail.current?.scrollBy({ left: -360, behavior: "smooth" })
-                    }
+                    onClick={() => rail.current?.scrollBy({ left: -360, behavior: "smooth" })}
                   >
                     ←
                   </button>
                   <button
                     aria-label="Más productos"
-                    onClick={() =>
-                      rail.current?.scrollBy({ left: 360, behavior: "smooth" })
-                    }
+                    onClick={() => rail.current?.scrollBy({ left: 360, behavior: "smooth" })}
                   >
                     →
                   </button>
                 </div>
               </div>
+
               <div className="product-rail" id="products" ref={rail}>
-                {products
-                  .map((product, index) => ({ product, index }))
-                  .filter(({ product }) =>
-                    /Cap|Towel|Backpack/.test(product.name),
-                  )
-                  .map(({ product, index }) => (
-                    <button
-                      className="product"
-                      key={product.name}
-                      onClick={() => setSelected(index)}
-                    >
-                      <div className="product-photo">
-                        <span className="new-tag">NEW</span>
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          loading="lazy"
-                        />
-                        <img
-                          className="lifestyle"
-                          src={product.lifestyle}
-                          alt={`${product.name}: inspiración lifestyle en la costa`}
-                          loading="lazy"
-                        />
-                        <span className="quick-add">
-                          VER PRODUCTO <span>+</span>
-                        </span>
-                      </div>
-                      <div className="product-name">
-                        <h3>{product.name}</h3>
-                        <span>{money(product.price)}</span>
-                      </div>
-                      <p>{product.color}</p>
-                    </button>
-                  ))}
+                {accessoryProducts.map(({ product, index }) => (
+                  <button
+                    className="product"
+                    key={product.id || `${product.name}-${index}`}
+                    onClick={() => setSelected(index)}
+                  >
+                    <div className="product-photo">
+                      {product.isNew && <span className="new-tag">NEW</span>}
+                      <img
+                        src={product.image}
+                        alt={product.name}
+                        loading="lazy"
+                      />
+                      <img
+                        className="lifestyle"
+                        src={product.lifestyle}
+                        alt={`${product.name}: inspiración lifestyle`}
+                        loading="lazy"
+                      />
+                      <span className="quick-add">
+                        VER PRODUCTO <span>+</span>
+                      </span>
+                    </div>
+                    <div className="product-name">
+                      <h3>{product.name}</h3>
+                      <span>{money(product.price)}</span>
+                    </div>
+                    <p>{product.color}</p>
+                  </button>
+                ))}
               </div>
             </section>
+
             <Collections embedded />
+
+            {/* SECCIÓN STORIES CON EL VIDEO DE YOUTUBE */}
             <section className="stories reveal" id="stories">
               <div className="section-heading">
                 <div>
@@ -493,11 +441,14 @@ function Storefront() {
             </section>
           </>
         )}
+
         {(location.pathname === "/shop" ||
           location.pathname.startsWith("/colecciones/")) && (
           <Catalog products={products} onSelect={setSelected} />
         )}
+
         {isCollections && <Collections />}
+
         {location.pathname === "/checkout" && (
           <Checkout
             products={products}
@@ -507,7 +458,7 @@ function Storefront() {
                 number: confirmed.number,
                 date: new Date().toISOString(),
                 detail: confirmed.items
-                  .map((item) => `${products[item.index].name} (${item.size})`)
+                  .map((item) => `${products[item.index]?.name} (${item.size})`)
                   .join(", "),
                 units: confirmed.items.length,
                 subtotal: confirmed.subtotal,
@@ -520,9 +471,11 @@ function Storefront() {
             }}
           />
         )}
+
         {location.pathname === "/confirmation" && (
           <Confirmation products={products} order={order} />
         )}
+
         {location.pathname === "/about" && (
           <div className="about-page">
             <section className="culture reveal" id="culture">
@@ -549,7 +502,7 @@ function Storefront() {
               <div className="culture-photo">
                 <img
                   src={photo("1559628234-d70bb7959a92")}
-                  alt="Surfista buscando su próxima ola en aguas turquesas"
+                  alt="Surfista buscando su próxima ola"
                   loading="lazy"
                 />
                 <span>LESS CONNECTED. MORE ALIVE.</span>
@@ -557,6 +510,7 @@ function Storefront() {
             </section>
           </div>
         )}
+
         {![
           "/",
           "/shop",
@@ -564,13 +518,15 @@ function Storefront() {
           "/about",
           "/checkout",
           "/confirmation",
-        ].includes(location.pathname) && (
-          <section className="not-found">
-            <p className="eyebrow">OFF THE MAP</p>
-            <h1>Esta ola no existe.</h1>
-            <Link to="/">VOLVER AL INICIO →</Link>
-          </section>
-        )}
+        ].includes(location.pathname) &&
+          !location.pathname.startsWith("/colecciones/") && (
+            <section className="not-found">
+              <p className="eyebrow">OFF THE MAP</p>
+              <h1>Esta ola no existe.</h1>
+              <Link to="/">VOLVER AL INICIO →</Link>
+            </section>
+          )}
+
         {!isCollections && !isCheckout && (
           <section className="newsletter">
             <div>
@@ -592,9 +548,7 @@ function Storefront() {
                 Nuevos drops, historias y alguna que otra escapada.
               </label>
               <p className="newsletter-success" role="status">
-                {subscribed
-                  ? "Ya estás en la lista. Nos vemos en el agua."
-                  : ""}
+                {subscribed ? "Ya estás en la lista. Nos vemos en el agua." : ""}
               </p>
               <div className="email-field">
                 <input
@@ -614,6 +568,7 @@ function Storefront() {
           </section>
         )}
       </main>
+
       {!isCollections && !isCheckout && (
         <footer>
           <Link className="footer-brand" to="/">
@@ -622,9 +577,7 @@ function Storefront() {
           <div>
             <Link to="/shop">Shop</Link>
             <Link to="/about">Nuestra historia</Link>
-            <button onClick={() => setPanel("help")}>
-              Envíos y devoluciones
-            </button>
+            <button onClick={() => setPanel("help")}>Envíos y devoluciones</button>
             <button onClick={() => setPanel("contact")}>Contacto</button>
           </div>
           <div className="footer-bottom">
@@ -634,6 +587,8 @@ function Storefront() {
           </div>
         </footer>
       )}
+
+      {/* OVERLAY Y DRAWER MODALES */}
       {panel && (
         <div className="overlay" onClick={() => setPanel(null)}>
           <aside
@@ -641,7 +596,7 @@ function Storefront() {
             role="dialog"
             aria-modal="true"
             aria-label={panel === "cart" ? "Tu carrito" : panel}
-            onClick={(event) => event.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="drawer-title">
               <h2>
@@ -659,14 +614,11 @@ function Storefront() {
                             ? "Hablemos."
                             : "Sin complicaciones."}
               </h2>
-              <button
-                autoFocus
-                aria-label="Cerrar"
-                onClick={() => setPanel(null)}
-              >
+              <button autoFocus aria-label="Cerrar" onClick={() => setPanel(null)}>
                 <Icon name="close" />
               </button>
             </div>
+
             {panel === "cart" ? (
               <>
                 <p className="shipping">
@@ -674,11 +626,7 @@ function Storefront() {
                     ? "Tu envío es gratis."
                     : `Te faltan ${money(300 - subtotal)} para envío gratis.`}
                 </p>
-                <progress
-                  max={300}
-                  value={Math.min(subtotal, 300)}
-                  aria-label="Progreso hacia envío gratis"
-                />
+                <progress max={300} value={Math.min(subtotal, 300)} />
                 <div className="cart-items">
                   {cart.length === 0 ? (
                     <div className="empty-cart">
@@ -699,21 +647,17 @@ function Storefront() {
                     cart.map(({ index, size }, position) => (
                       <div className="cart-item" key={position}>
                         <img
-                          src={products[index].image}
-                          alt={products[index].name}
+                          src={products[index]?.image}
+                          alt={products[index]?.name}
                         />
                         <div>
-                          <h3>{products[index].name}</h3>
-                          <p>{products[index].color}</p>
+                          <h3>{products[index]?.name}</h3>
+                          <p>{products[index]?.color}</p>
                           <p>Talla: {size} · Cantidad: 1</p>
-                          <strong>
-                            Precio unitario: {money(products[index].price)}
-                          </strong>
+                          <strong>{money(products[index]?.price || 0)}</strong>
                           <button
                             onClick={() =>
-                              setCart(
-                                cart.filter((_, item) => item !== position),
-                              )
+                              setCart(cart.filter((_, item) => item !== position))
                             }
                           >
                             Eliminar
@@ -738,7 +682,6 @@ function Storefront() {
                     >
                       CONTINUAR AL CHECKOUT <span>→</span>
                     </button>
-                    <p>Checkout de demostración. Sin cobros reales.</p>
                   </div>
                 )}
               </>
@@ -749,7 +692,7 @@ function Storefront() {
                   className="search-input"
                   placeholder="Buscar gorras, camisetas…"
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(e) => setQuery(e.target.value)}
                 />
                 {products
                   .map((product, index) => ({ product, index }))
@@ -772,9 +715,6 @@ function Storefront() {
                       <span>{money(product.price)}</span>
                     </button>
                   ))}
-                <p className="small-label">
-                  Busca por nombre o color del producto.
-                </p>
               </>
             ) : panel === "menu" ? (
               <nav className="drawer-nav">
@@ -816,35 +756,12 @@ function Storefront() {
                       mundo. Hay viajes que no se miden en kilómetros, sino en
                       olas.
                     </p>
-                    <p>
-                      Salimos antes del amanecer. Sin notificaciones ni
-                      itinerario. Solo la costa, los amigos y la promesa de un
-                      baño más. Eso es Gone Surfing.
-                    </p>
-                  </>
-                ) : panel === "contact" ? (
-                  <>
-                    <p>
-                      Para preguntas, colaboraciones o simplemente compartir una
-                      buena ola.
-                    </p>
-                    <a href="mailto:hello@gonesurfing.com">
-                      hello@gonesurfing.com ↗
-                    </a>
                   </>
                 ) : (
                   <>
-                    <h3>Envíos</h3>
-                    <p>
-                      Envío gratis a partir de S/. 300.00 de subtotal. Los
-                      plazos y tarifas finales se confirmarán cuando abramos la
-                      compra online.
-                    </p>
-                    <h3>Devoluciones</h3>
-                    <p>
-                      ¿Necesitas ayuda con tu pedido? Escríbenos a
-                      hello@gonesurfing.com.
-                    </p>
+                    <h3>Contacto y Envíos</h3>
+                    <p>hello@gonesurfing.com</p>
+                    <p>Envíos gratis a partir de S/. 300.00.</p>
                   </>
                 )}
               </div>
@@ -852,22 +769,21 @@ function Storefront() {
           </aside>
         </div>
       )}
-      {selected !== null && (
-        <div
-          className="overlay modal-overlay"
-          onClick={() => setSelected(null)}
-        >
+
+      {/* MODAL DETALLE DE PRODUCTO */}
+      {selected !== null && products[selected] && (
+        <div className="overlay modal-overlay" onClick={() => setSelected(null)}>
           <div
             className="product-modal"
             role="dialog"
             aria-modal="true"
             aria-label={products[selected].name}
-            onClick={(event) => event.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               className="modal-close"
               autoFocus
-              aria-label="Cerrar producto"
+              aria-label="Cerrar"
               onClick={() => setSelected(null)}
             >
               <Icon name="close" />
@@ -878,10 +794,8 @@ function Storefront() {
               <h2>{products[selected].name}</h2>
               <p>{products[selected].color}</p>
               <h3>{money(products[selected].price)}</h3>
-
               <p>
-                Para los días sin planes. Un esencial relajado que te acompaña
-                de la ciudad a la costa.
+                Para los días sin planes. Esencial costero confeccionado para durar.
               </p>
               <fieldset className="size-selector">
                 <legend>Elige tu talla</legend>
@@ -898,15 +812,6 @@ function Storefront() {
                     </button>
                   ))}
                 </div>
-                <p aria-live="polite">
-                  {selectedSize
-                    ? `${t("Talla:")} ${
-                        selectedSize === "Única"
-                          ? t("Talla única")
-                          : selectedSize
-                      }`
-                    : t("Selecciona una talla para continuar.")}
-                </p>
               </fieldset>
               <button
                 className="dark-button"
@@ -924,6 +829,8 @@ function Storefront() {
           </div>
         </div>
       )}
+
+      {/* MODAL DEL VIDEO DE YOUTUBE */}
       {video && (
         <div className="overlay modal-overlay" onClick={() => setVideo(false)}>
           <div
@@ -931,6 +838,7 @@ function Storefront() {
             role="dialog"
             aria-modal="true"
             aria-label="Película de surf"
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               autoFocus
@@ -940,15 +848,15 @@ function Storefront() {
               <Icon name="close" />
             </button>
             <iframe
-              src="https://www.youtube-nocookie.com/embed/lWBE-Qv-kXU"
+              src={getYouTubeEmbed(youtubeSource)}
               title="Surf film"
-              allow="autoplay; encrypted-media; picture-in-picture"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
             />
           </div>
         </div>
       )}
-    </>,
+    </>
   )
 }
 
@@ -974,7 +882,7 @@ const router = createBrowserRouter([
 export default function App() {
   return (
     <LanguageProvider>
-      <StoreData initialProducts={products}>
+      <StoreData initialProducts={defaultProducts}>
         <RouterProvider router={router} />
       </StoreData>
     </LanguageProvider>
