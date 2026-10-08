@@ -1,0 +1,10 @@
+{
+  "description": "This immersive e-commerce platform offers a sleek, modern shopping experience for streetwear enthusiasts, featuring lifestyle imagery and seamless navigation.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
