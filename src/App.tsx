@@ -18,6 +18,12 @@ const photo = (id: string, width = 1400) =>
   `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${width}&q=85`
 const surf = photo("1636353990836-b20b196dd41e", 2400)
 
+export interface CartItem {
+  index: number
+  size: string
+  quantity: number
+}
+
 const defaultProducts: Product[] = [
   {
     name: "The Everyday Cap",
@@ -57,9 +63,8 @@ const defaultProducts: Product[] = [
   },
 ]
 
-// Conversor dinámico para enlaces o IDs de YouTube
 function getYouTubeEmbed(input: string): string {
-  const fallbackId = "9Jbam0F4Jj8" // Film oficial WSL
+  const fallbackId = "9Jbam0F4Jj8"
   if (!input) return `https://www.youtube.com/embed/${fallbackId}?autoplay=1&rel=0`
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/
   const match = input.match(regExp)
@@ -67,7 +72,6 @@ function getYouTubeEmbed(input: string): string {
   return `https://www.youtube.com/embed/${videoId || fallbackId}?autoplay=1&rel=0`
 }
 
-// Función para despachar correos (soporta EmailJS real o simulación en consola)
 async function despacharCorreoNotificacion({
   toEmail,
   customerName,
@@ -183,13 +187,30 @@ function Storefront() {
   const [order, setOrder] = useState<DemoOrder | null>(null)
   const [scrolled, setScrolled] = useState(false)
   const [panel, setPanel] = useState<string | null>(null)
-  const [cart, setCart] = useState<{ index: number; size: string }[]>([])
+
+  // 1. Carrito con persistencia en localStorage
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem("gs_cart")
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch (e) {
+      console.error("Error al cargar carrito desde localStorage:", e)
+    }
+    return []
+  })
+
+  useEffect(() => {
+    localStorage.setItem("gs_cart", JSON.stringify(cart))
+  }, [cart])
+
   const [selected, setSelected] = useState<number | null>(null)
   const [query, setQuery] = useState("")
   const [subscribed, setSubscribed] = useState(false)
   const [video, setVideo] = useState(false)
 
-  // URL del video de YouTube (soporta enlace dinámico o guardado)
   const [youtubeSource] = useState<string>(() => {
     return (
       localStorage.getItem("gs_youtube_video") ||
@@ -201,28 +222,97 @@ function Storefront() {
   const heroImage = useRef<HTMLImageElement>(null)
 
   const subtotalCents = cart.reduce(
-    (sum, item) => sum + Math.round(products[item.index]?.price * 100 || 0),
+    (sum, item) =>
+      sum + Math.round((products[item.index]?.price || 0) * 100) * (item.quantity || 1),
     0,
   )
   const subtotal = subtotalCents / 100
+  const totalUnits = cart.reduce((sum, item) => sum + (item.quantity || 1), 0)
 
-  // Opciones de talla según el desglose de stock configurado
+  const handleAddToCart = (productIndex: number, size: string) => {
+    setCart((prevCart) => {
+      const existingIndex = prevCart.findIndex(
+        (item) => item.index === productIndex && item.size === size,
+      )
+      if (existingIndex > -1) {
+        const updated = [...prevCart]
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: (updated[existingIndex].quantity || 1) + 1,
+        }
+        return updated
+      }
+      return [...prevCart, { index: productIndex, size, quantity: 1 }]
+    })
+    setSelected(null)
+    setPanel("cart")
+  }
+
+  const handleUpdateQuantity = (cartIndex: number, delta: number) => {
+    setCart((prevCart) => {
+      const item = prevCart[cartIndex]
+      if (!item) return prevCart
+      const currentQty = item.quantity || 1
+      const newQty = currentQty + delta
+      if (newQty <= 0) {
+        return prevCart.filter((_, idx) => idx !== cartIndex)
+      }
+      const updated = [...prevCart]
+      updated[cartIndex] = { ...item, quantity: newQty }
+      return updated
+    })
+  }
+
   const currentProduct = selected !== null ? products[selected] : null
+
+  // Validación robusta: identifica accesorios o artículos de talla única
+  const isAccessory = Boolean(
+    currentProduct &&
+      ((currentProduct.category || "").trim().toLowerCase() === "accesorios" ||
+        (currentProduct.size || "").toLowerCase().includes("única") ||
+        (currentProduct.size || "").toLowerCase().includes("unica") ||
+        (currentProduct.name || "").toLowerCase().includes("cap") ||
+        (currentProduct.name || "").toLowerCase().includes("gorra") ||
+        (currentProduct.name || "").toLowerCase().includes("gora") ||
+        (currentProduct.name || "").toLowerCase().includes("leash") ||
+        (currentProduct.name || "").toLowerCase().includes("pita"))
+  )
+
+  // Opciones de talla: si es accesorio SIEMPRE será ['Única']
   const sizeOptions =
     selected === null || !currentProduct
       ? []
-      : currentProduct.sizesStock
-        ? Object.keys(currentProduct.sizesStock)
-        : currentProduct.sizes ||
-          (currentProduct.category === "Merch" ||
-          currentProduct.category === "Wetsuits" ||
-          currentProduct.category === "New Arrivals"
-            ? ["S", "M", "L", "XL"]
-            : ["Única"])
+      : isAccessory
+        ? ["Única"]
+        : currentProduct.sizesStock && Object.keys(currentProduct.sizesStock).length > 0
+          ? Object.keys(currentProduct.sizesStock)
+          : currentProduct.sizes && currentProduct.sizes.length > 0
+            ? currentProduct.sizes
+            : ["S", "M", "L", "XL"]
 
+  // Auto-selección: si es accesorio se pre-selecciona "Única" automáticamente
   useEffect(() => {
-    setSelectedSize("")
-  }, [selected])
+    if (selected !== null && products[selected]) {
+      const prod = products[selected]
+      const esAcc =
+        (prod.category || "").trim().toLowerCase() === "accesorios" ||
+        (prod.size || "").toLowerCase().includes("única") ||
+        (prod.size || "").toLowerCase().includes("unica") ||
+        (prod.name || "").toLowerCase().includes("cap") ||
+        (prod.name || "").toLowerCase().includes("gorra") ||
+        (prod.name || "").toLowerCase().includes("gora") ||
+        (prod.name || "").toLowerCase().includes("leash") ||
+        (prod.name || "").toLowerCase().includes("pita")
+
+      if (esAcc) {
+        setSelectedSize("Única")
+      } else {
+        setSelectedSize("")
+      }
+    } else {
+      setSelectedSize("")
+    }
+  }, [selected, products])
 
   useEffect(() => {
     setPanel(null)
@@ -284,7 +374,6 @@ function Storefront() {
     }
   }, [panel, selected, video])
 
-  // FILTRADO DINÁMICO: Todos los accesorios reales
   const accessoryProducts = products
     .map((product, index) => ({ product, index }))
     .filter(
@@ -348,11 +437,11 @@ function Storefront() {
           </button>
           <button
             className="bag"
-            aria-label={`Carrito, ${cart.length} artículos`}
+            aria-label={`Carrito, ${totalUnits} artículos`}
             onClick={() => setPanel("cart")}
           >
             <Icon name="bag" />
-            <span>{cart.length}</span>
+            <span>{totalUnits}</span>
           </button>
         </div>
       </header>
@@ -434,7 +523,6 @@ function Storefront() {
               </Link>
             </section>
 
-            {/* SECCIÓN ACCESORIOS PARA DESCONECTAR */}
             <section className="shop-section reveal" id="shop">
               <div className="section-heading">
                 <div>
@@ -503,7 +591,6 @@ function Storefront() {
 
             <Collections embedded />
 
-            {/* SECCIÓN STORIES CON EL VIDEO DE YOUTUBE */}
             <section className="stories reveal" id="stories">
               <div className="section-heading">
                 <div>
@@ -557,18 +644,20 @@ function Storefront() {
           <Checkout
             products={products}
             cart={cart}
+            onUpdateQuantity={handleUpdateQuantity}
+            onRemoveItem={(cartIndex) =>
+              setCart((prev) => prev.filter((_, idx) => idx !== cartIndex))
+            }
             onComplete={(confirmed) => {
               const correoCliente = (confirmed.customerEmail || "").trim().toLowerCase()
               const nombreCliente = confirmed.customerName || "Cliente Gone Surfing"
 
-              // Consulta de clientes registrados para decidir envío de correos
               const registrados: string[] = JSON.parse(
                 localStorage.getItem("gs_clientes_registrados") || "[]"
               )
               const esPrimeraCompra = Boolean(correoCliente && !registrados.includes(correoCliente))
 
               if (esPrimeraCompra && correoCliente) {
-                // PRIMERA COMPRA: Registrar cliente y enviar 2 correos
                 registrados.push(correoCliente)
                 localStorage.setItem("gs_clientes_registrados", JSON.stringify(registrados))
 
@@ -587,7 +676,6 @@ function Storefront() {
                   tipoCorreo: "bienvenida",
                 })
               } else if (correoCliente) {
-                // SEGUNDA COMPRA (O RECURRENTE): Enviar únicamente la boleta
                 despacharCorreoNotificacion({
                   toEmail: correoCliente,
                   customerName: nombreCliente,
@@ -597,14 +685,17 @@ function Storefront() {
                 })
               }
 
-              // Registrar en caja con todos los datos detallados
               addSale({
                 number: confirmed.number,
                 date: new Date().toISOString(),
                 detail: confirmed.items
-                  .map((item) => `${products[item.index]?.name} (${item.size})`)
+                  .map((item) => {
+                    const qty = item.quantity || 1
+                    const prodName = products[item.index]?.name || "Prenda"
+                    return `${qty > 1 ? `${qty}x ` : "1x "}${prodName} (${item.size})`
+                  })
                   .join(", "),
-                units: confirmed.items.length,
+                units: confirmed.items.reduce((sum, it) => sum + (it.quantity || 1), 0),
                 subtotal: confirmed.subtotal,
                 tax: confirmed.tax,
                 total: confirmed.total,
@@ -615,6 +706,7 @@ function Storefront() {
 
               setOrder(confirmed)
               setCart([])
+              localStorage.removeItem("gs_cart")
               navigate("/confirmation")
             }}
           />
@@ -778,7 +870,7 @@ function Storefront() {
             <div className="drawer-title">
               <h2>
                 {panel === "cart"
-                  ? `Tu bolsa (${cart.length})`
+                  ? `Tu bolsa (${totalUnits})`
                   : panel === "search"
                     ? "Encuentra tu próxima ola."
                     : panel === "menu"
@@ -825,33 +917,113 @@ function Storefront() {
                       </button>
                     </div>
                   ) : (
-                    cart.map(({ index, size }, position) => (
-                      <div className="cart-item" key={position}>
-                        <img
-                          src={products[index]?.image}
-                          alt={products[index]?.name}
-                        />
-                        <div>
-                          <h3>{products[index]?.name}</h3>
-                          <p>{products[index]?.color}</p>
-                          <p>
-                            Talla: {size} · Cantidad: 1
-                          </p>
-                          <strong>
-                            {money(products[index]?.price || 0)}
-                          </strong>
-                          <button
-                            onClick={() =>
-                              setCart(
-                                cart.filter((_, item) => item !== position),
-                              )
-                            }
-                          >
-                            Eliminar
-                          </button>
+                    cart.map(({ index, size, quantity }, position) => {
+                      const qty = quantity || 1
+                      return (
+                        <div className="cart-item" key={`${index}-${size}-${position}`}>
+                          <img
+                            src={products[index]?.image}
+                            alt={products[index]?.name}
+                          />
+                          <div>
+                            <h3>{products[index]?.name}</h3>
+                            <p>{products[index]?.color}</p>
+
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                margin: "6px 0",
+                              }}
+                            >
+                              <span style={{ fontSize: "11px", color: "#666" }}>
+                                Talla: <strong style={{ color: "#111" }}>{size}</strong>
+                              </span>
+                              <span style={{ color: "#aaa" }}>·</span>
+                              <div
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  border: "1px solid #111",
+                                  borderRadius: "4px",
+                                  overflow: "hidden",
+                                  backgroundColor: "#fff",
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  style={{
+                                    background: "#111",
+                                    border: "none",
+                                    color: "#fff",
+                                    width: "24px",
+                                    height: "24px",
+                                    cursor: "pointer",
+                                    fontSize: "13px",
+                                    fontWeight: "bold",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                  onClick={() => handleUpdateQuantity(position, -1)}
+                                  aria-label="Disminuir cantidad"
+                                >
+                                  -
+                                </button>
+                                <span
+                                  style={{
+                                    padding: "0 8px",
+                                    fontSize: "12px",
+                                    fontWeight: "bold",
+                                    color: "#000000",
+                                    backgroundColor: "#ffffff",
+                                    minWidth: "18px",
+                                    textAlign: "center",
+                                    lineHeight: "24px",
+                                  }}
+                                >
+                                  {qty}
+                                </span>
+                                <button
+                                  type="button"
+                                  style={{
+                                    background: "#111",
+                                    border: "none",
+                                    color: "#fff",
+                                    width: "24px",
+                                    height: "24px",
+                                    cursor: "pointer",
+                                    fontSize: "13px",
+                                    fontWeight: "bold",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                  onClick={() => handleUpdateQuantity(position, 1)}
+                                  aria-label="Aumentar cantidad"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+
+                            <strong>
+                              {money((products[index]?.price || 0) * qty)}
+                            </strong>
+                            <button
+                              onClick={() =>
+                                setCart(
+                                  cart.filter((_, item) => item !== position),
+                                )
+                              }
+                            >
+                              Eliminar
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
                 {cart.length > 0 && (
@@ -1007,7 +1179,7 @@ function Storefront() {
                     const currentProd = products[selected]
                     const stockDisponible =
                       currentProd?.sizesStock?.[size] ??
-                      (size === "Única" ? currentProd?.stock ?? 10 : 10)
+                      (size === "Única" ? currentProd?.stock ?? 20 : 10)
                     const isAgotada = stockDisponible <= 0
 
                     return (
@@ -1032,10 +1204,8 @@ function Storefront() {
                 className="dark-button"
                 disabled={!selectedSize}
                 onClick={() => {
-                  if (!selectedSize) return
-                  setCart([...cart, { index: selected, size: selectedSize }])
-                  setSelected(null)
-                  setPanel("cart")
+                  if (!selectedSize || selected === null) return
+                  handleAddToCart(selected, selectedSize)
                 }}
               >
                 AÑADIR A LA BOLSA <Icon name="arrow" />

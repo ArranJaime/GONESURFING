@@ -202,7 +202,7 @@ export default function Admin() {
         const hasta = fechaHasta ? new Date(fechaHasta).getTime() + (24 * 60 * 60 * 1000 - 1) : Infinity;
         return fechaTx >= desde && fechaTx <= hasta;
       }
-      return true; // 'todos'
+      return true;
     });
   }, [transacciones, filtroTiempo, fechaDesde, fechaHasta]);
 
@@ -210,7 +210,7 @@ export default function Admin() {
   const totalRecaudado = transaccionesFiltradas.reduce((acc, t) => acc + t.total, 0);
   const totalIGV = transaccionesFiltradas.reduce((acc, t) => acc + t.igv, 0);
 
-  // Exportar Hoja de Cálculo (CSV Profesional con UTF-8 BOM y Separador Punto y Coma)
+  // Exportar Hoja de Cálculo
   const handleExportCSV = () => {
     const BOM = '\uFEFF';
     const separador = ';';
@@ -332,24 +332,36 @@ export default function Admin() {
     alert('¡Prenda agregada al catálogo exitosamente!');
   };
 
-  const handleUpdateStock = (id: string, delta: number) => {
-    setProductos(productos.map(p => {
-      if (p.id === id) {
-        const nuevoStock = Math.max(0, p.stock + delta);
-        let nuevoSizesStock = p.sizesStock ? { ...p.sizesStock } : undefined;
-        if (nuevoSizesStock) {
-          if (p.categoria === 'Accesorios') {
-            nuevoSizesStock['Única'] = nuevoStock;
+  // Actualización individual por talla con recálculo de stock general
+  const handleUpdateSizeStock = (id: string, talla: string, delta: number) => {
+    setProductos(prevProductos =>
+      prevProductos.map(p => {
+        if (p.id !== id) return p;
+
+        let nuevoSizesStock: Record<string, number> = {};
+
+        if (p.sizesStock && Object.keys(p.sizesStock).length > 0) {
+          nuevoSizesStock = { ...p.sizesStock };
+          const actual = nuevoSizesStock[talla] ?? 0;
+          nuevoSizesStock[talla] = Math.max(0, actual + delta);
+        } else {
+          if (p.categoria === 'Accesorios' || talla === 'Única') {
+            nuevoSizesStock = { 'Única': Math.max(0, (p.stock || 0) + delta) };
           } else {
-            const tallas = ['S', 'M', 'L', 'XL'];
-            const targetKey = delta > 0 ? 'M' : tallas.find(t => (nuevoSizesStock![t] || 0) > 0) || 'M';
-            nuevoSizesStock[targetKey] = Math.max(0, (nuevoSizesStock[targetKey] || 0) + delta);
+            nuevoSizesStock = { S: 0, M: 0, L: 0, XL: 0 };
+            nuevoSizesStock[talla] = Math.max(0, delta > 0 ? delta : 0);
           }
         }
-        return { ...p, stock: nuevoStock, sizesStock: nuevoSizesStock };
-      }
-      return p;
-    }));
+
+        const nuevoTotal = Object.values(nuevoSizesStock).reduce((acc, val) => acc + val, 0);
+
+        return {
+          ...p,
+          stock: nuevoTotal,
+          sizesStock: nuevoSizesStock,
+        };
+      })
+    );
   };
 
   const handleDeleteProducto = (id: string) => {
@@ -425,6 +437,19 @@ export default function Admin() {
     }
   };
 
+  // Helper para obtener las tallas a renderizar en la fila del catálogo
+  const getTallasProducto = (prod: Product): string[] => {
+    if (prod.categoria === 'Accesorios') return ['Única'];
+    const tallasBase = ['S', 'M', 'L', 'XL'];
+    if (prod.sizesStock) {
+      const keys = Object.keys(prod.sizesStock);
+      const ordenadas = tallasBase.filter(t => keys.includes(t));
+      const extras = keys.filter(t => !tallasBase.includes(t));
+      return ordenadas.length > 0 ? [...ordenadas, ...extras] : keys;
+    }
+    return tallasBase;
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#111111] text-white flex items-center justify-center p-6 font-sans">
@@ -496,7 +521,7 @@ export default function Admin() {
           </span>
         </div>
 
-        {/* Pestañas de Navegación con separación física y estilo Segmented Control */}
+        {/* Pestañas de Navegación Segmented Control */}
         <div
           style={{
             display: 'inline-flex',
@@ -765,52 +790,129 @@ export default function Admin() {
                       <th className="p-3">Categoría</th>
                       <th className="p-3">Colección</th>
                       <th className="p-3">Precio</th>
-                      <th className="p-3">Stock Actual</th>
+                      <th className="p-3">Stock Actual por Variantes</th>
                       <th className="p-3 text-right">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-800">
-                    {productos.map((prod) => (
-                      <tr key={prod.id} className="hover:bg-neutral-800/30 transition-colors">
-                        <td className="p-3 flex items-center space-x-3">
-                          <img src={prod.imagenUrl} alt={prod.nombre} className="w-10 h-10 object-contain bg-[#222] rounded p-1" />
-                          <span className="font-semibold text-white">{prod.nombre}</span>
-                        </td>
-                        <td className="p-3 text-neutral-300">{prod.categoria}</td>
-                        <td className="p-3 text-neutral-400 font-mono">
-                          {prod.coleccion ? (
-                            <span className="bg-neutral-800 px-2 py-0.5 rounded text-[10px] text-neutral-200">{prod.coleccion}</span>
-                          ) : (
-                            <span className="text-neutral-500 italic text-[11px]">General</span>
-                          )}
-                        </td>
-                        <td className="p-3 font-semibold text-white">S/. {prod.precio.toFixed(2)}</td>
-                        <td className="p-3">
-                          <div className="flex items-center space-x-2 mb-1.5">
-                            <button onClick={() => handleUpdateStock(prod.id, -1)} className="px-2 py-0.5 bg-neutral-800 hover:bg-neutral-700 rounded text-neutral-300 cursor-pointer">-</button>
-                            <span className={`font-mono font-bold ${prod.stock === 0 ? 'text-red-500' : 'text-white'}`}>{prod.stock}</span>
-                            <button onClick={() => handleUpdateStock(prod.id, 1)} className="px-2 py-0.5 bg-neutral-800 hover:bg-neutral-700 rounded text-neutral-300 cursor-pointer">+</button>
-                          </div>
-                          {prod.sizesStock && (
-                            <div className="flex flex-wrap gap-1">
-                              {Object.entries(prod.sizesStock).map(([talla, cantidad]) => (
-                                <span
-                                  key={talla}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
-                                    cantidad === 0 ? 'bg-red-950/50 border-red-800/40 text-red-400' : 'bg-neutral-900 border-neutral-800 text-neutral-300'
-                                  }`}
-                                >
-                                  {talla}: {cantidad}
-                                </span>
-                              ))}
+                    {productos.map((prod) => {
+                      const tallas = getTallasProducto(prod);
+                      return (
+                        <tr key={prod.id} className="hover:bg-neutral-800/30 transition-colors">
+                          <td className="p-3 flex items-center space-x-3">
+                            <img src={prod.imagenUrl} alt={prod.nombre} className="w-10 h-10 object-contain bg-[#222] rounded p-1" />
+                            <span className="font-semibold text-white">{prod.nombre}</span>
+                          </td>
+                          <td className="p-3 text-neutral-300">{prod.categoria}</td>
+                          <td className="p-3 text-neutral-400 font-mono">
+                            {prod.coleccion ? (
+                              <span className="bg-neutral-800 px-2 py-0.5 rounded text-[10px] text-neutral-200">{prod.coleccion}</span>
+                            ) : (
+                              <span className="text-neutral-500 italic text-[11px]">General</span>
+                            )}
+                          </td>
+                          <td className="p-3 font-semibold text-white">S/. {prod.precio.toFixed(2)}</td>
+                          
+                          {/* Selector Horizontal por Variantes */}
+                          <td className="p-3">
+                            <div className="flex flex-col gap-1.5 min-w-[280px]">
+                              <div className="flex flex-wrap items-center gap-2">
+                                {tallas.map((talla) => {
+                                  const cantidad = prod.sizesStock?.[talla] ?? (talla === 'Única' ? prod.stock : 0);
+                                  return (
+                                    <div
+                                      key={talla}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        backgroundColor: '#1b1b1b',
+                                        border: cantidad === 0 ? '1px solid #7f1d1d' : '1px solid #333333',
+                                        borderRadius: '6px',
+                                        padding: '3px 6px',
+                                        gap: '6px',
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          fontSize: '11px',
+                                          fontWeight: 800,
+                                          color: cantidad === 0 ? '#ef4444' : '#A3B8A4',
+                                          minWidth: talla === 'Única' ? '36px' : '14px',
+                                          textAlign: 'center',
+                                        }}
+                                      >
+                                        {talla}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        style={{
+                                          background: '#111111',
+                                          border: '1px solid #444444',
+                                          color: '#ffffff',
+                                          width: '20px',
+                                          height: '20px',
+                                          borderRadius: '3px',
+                                          cursor: 'pointer',
+                                          fontSize: '12px',
+                                          fontWeight: 'bold',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                        }}
+                                        onClick={() => handleUpdateSizeStock(prod.id, talla, -1)}
+                                        aria-label={`Reducir ${talla}`}
+                                      >
+                                        -
+                                      </button>
+                                      <span
+                                        style={{
+                                          fontFamily: 'monospace',
+                                          fontWeight: 700,
+                                          fontSize: '12px',
+                                          color: cantidad === 0 ? '#ef4444' : '#ffffff',
+                                          minWidth: '20px',
+                                          textAlign: 'center',
+                                        }}
+                                      >
+                                        {cantidad}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        style={{
+                                          background: '#111111',
+                                          border: '1px solid #444444',
+                                          color: '#ffffff',
+                                          width: '20px',
+                                          height: '20px',
+                                          borderRadius: '3px',
+                                          cursor: 'pointer',
+                                          fontSize: '12px',
+                                          fontWeight: 'bold',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                        }}
+                                        onClick={() => handleUpdateSizeStock(prod.id, talla, 1)}
+                                        aria-label={`Aumentar ${talla}`}
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <span style={{ fontSize: '10px', color: '#777777', fontFamily: 'monospace' }}>
+                                Total acumulado: <strong style={{ color: prod.stock === 0 ? '#ef4444' : '#ffffff' }}>{prod.stock}</strong> unidades
+                              </span>
                             </div>
-                          )}
-                        </td>
-                        <td className="p-3 text-right">
-                          <button onClick={() => handleDeleteProducto(prod.id)} className="text-red-400 hover:text-red-300 font-semibold cursor-pointer">Eliminar</button>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+
+                          <td className="p-3 text-right">
+                            <button onClick={() => handleDeleteProducto(prod.id)} className="text-red-400 hover:text-red-300 font-semibold cursor-pointer">Eliminar</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -904,10 +1006,9 @@ export default function Admin() {
           </div>
         )}
 
-        {/* TAB 3: CONTROL DE CAJA CON DESTINO Y FILTROS */}
+        {/* TAB 3: CONTROL DE CAJA */}
         {activeTab === 'caja' && (
           <div className="space-y-8">
-            {/* Tarjetas de Métricas Recalculadas */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6">
                 <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
@@ -930,7 +1031,6 @@ export default function Admin() {
               </div>
             </div>
 
-            {/* Barra de Filtros de Fecha con espaciado y botones definidos */}
             <div
               style={{
                 backgroundColor: '#141414',
@@ -1024,7 +1124,6 @@ export default function Admin() {
               )}
             </div>
 
-            {/* Tabla Detallada con Destino y Dirección de Casa */}
             <div className="bg-[#141414] border border-neutral-800 rounded-xl p-6">
               <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                 <div>
@@ -1080,8 +1179,6 @@ export default function Admin() {
                         <tr key={tx.id} className="hover:bg-neutral-800/30 transition-colors">
                           <td className="p-3 font-mono font-bold text-white">{tx.id}</td>
                           <td className="p-3 text-neutral-400 whitespace-nowrap">{formatearFechaDisplay(tx.fecha)}</td>
-                          
-                          {/* Columna Detallada de Destino y Dirección */}
                           <td className="p-3">
                             <div className="flex flex-col">
                               <span className="font-semibold text-white flex items-center gap-1.5">
@@ -1098,7 +1195,6 @@ export default function Admin() {
                               )}
                             </div>
                           </td>
-
                           <td className="p-3 text-neutral-300 max-w-xs">{tx.detalle}</td>
                           <td className="p-3 font-mono text-neutral-400">S/. {tx.subtotal.toFixed(2)}</td>
                           <td className="p-3 font-mono text-[#A3B8A4]">S/. {tx.igv.toFixed(2)}</td>
@@ -1120,4 +1216,4 @@ export default function Admin() {
       </main>
     </div>
   );
-}
+} 
