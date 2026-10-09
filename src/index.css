@@ -152,3 +152,51 @@ html{scroll-behavior:smooth;scroll-padding-top:90px}body{margin:0}button,a,input
 @media(max-width:640px){.language-switch{font-size:9px;gap:1px}.utilities{gap:9px}.wordmark{font-size:16px}.wordmark span{font-size:4.5px}.home-drops .drop-block{height:450px}.home-drops .merch-drop{height:360px}.home-drops .drop-block h2{font-size:48px;letter-spacing:-2.5px}.home-drops .drop-block>div{left:23px;right:23px;bottom:28px}.home-drops .drop-block>.eyebrow{left:23px;top:25px}.collection-embedded{padding-top:50px}.collection-embedded .coverflow{min-height:390px;height:440px}.shop-section .section-heading h2{font-size:26px;max-width:250px}.shop-section .section-heading{gap:12px}}
 @media(max-width:1000px){.drop-block{height:420px}.catalog-heading h1{font-size:53px}.catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.catalog-filter>div{gap:20px}.coverflow-card{width:57%}.collection-card-copy h2{font-size:44px}.coverflow-arrow.previous{left:4%}.coverflow-arrow.next{right:4%}}
 @media(max-width:640px){.home-drops{grid-template-columns:1fr;padding:25px 5% 0;gap:12px}.drop-block{height:390px}.drop-block>div{left:23px;right:23px;bottom:25px}.drop-block>.eyebrow{left:23px;top:25px}.drop-block h2{font-size:38px}.catalog-page{padding:115px 5% 50px}.catalog-heading{display:block;margin-bottom:30px}.catalog-heading h1{font-size:43px;letter-spacing:-2.4px;margin-top:20px}.catalog-heading>p{margin-top:20px;font-size:11px}.catalog-filter{display:block;padding:15px 0}.catalog-filter>div{flex-wrap:nowrap;overflow-x:auto;gap:20px;padding-bottom:12px}.catalog-filter button{white-space:nowrap;font-size:10px}.catalog-filter>span{display:block;margin-top:5px}.catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:28px 12px}.catalog-grid .product-name{flex-direction:column;gap:5px;font-size:11px}.catalog-grid .product>p{font-size:8px;line-height:1.5}.catalog-grid .quick-add{font-size:7px;padding:11px}.catalog-end span{font-size:6px}.catalog-end p{font-size:24px}.collection-page{padding-top:115px;min-height:100svh}.collection-intro h1{font-size:32px}.collection-intro{padding-bottom:30px}.coverflow{height:54svh;min-height:390px;max-height:650px}.coverflow-card{width:76%}.coverflow-card.left{transform:translateX(-115%) translateZ(-150px) rotateY(28deg) scale(.85)}.coverflow-card.right{transform:translateX(15%) translateZ(-150px) rotateY(-28deg) scale(.85)}.collection-card-top{left:20px;right:20px;top:20px;font-size:6px}.collection-card-copy{left:22px;right:22px;bottom:28px}.collection-card-copy p{font-size:6px}.collection-card-copy h2{font-size:36px;letter-spacing:-1.8px}.collection-card-copy a{font-size:7px}.coverflow-arrow{height:35px;width:35px;font-size:16px}.coverflow-arrow.previous{left:3%}.coverflow-arrow.next{right:3%}.collection-pagination{flex-wrap:wrap;justify-content:center;font-size:6px;gap:15px;padding-top:25px}.collection-pagination>span:first-child{width:100%;text-align:center}.collection-pagination>span:last-child{display:none}.newsletter h2{font-size:45px;letter-spacing:-2px}.newsletter form>.newsletter-success{font-size:11px}}
+
+/* ==========================================================================
+   TRANSICIONES EDITORIALES Y SLIDE-IN DE CATÁLOGO
+   ========================================================================== */
+
+@keyframes editorialSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cardStagger {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.catalog-page {
+  animation: editorialSlideIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.catalog-grid .product {
+  animation: cardStagger 0.45s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.catalog-grid .product:nth-child(1) { animation-delay: 0.08s; }
+.catalog-grid .product:nth-child(2) { animation-delay: 0.14s; }
+.catalog-grid .product:nth-child(3) { animation-delay: 0.20s; }
+.catalog-grid .product:nth-child(4) { animation-delay: 0.26s; }
+.catalog-grid .product:nth-child(5) { animation-delay: 0.32s; }
+.catalog-grid .product:nth-child(6) { animation-delay: 0.38s; }
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.35s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}

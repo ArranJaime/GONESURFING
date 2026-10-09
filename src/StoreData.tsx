@@ -14,6 +14,7 @@ export type StockProduct = Product & {
   id?: string
   stock?: number
   collection?: string
+  sizesStock?: Record<string, number>
 }
 
 export type Sale = {
@@ -24,7 +25,11 @@ export type Sale = {
   subtotal: number
   tax: number
   total: number
+  distrito?: string    
+  direccion?: string   
+  cliente?: string
 }
+
 
 const photo = (id: string) =>
   `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1600&q=85`

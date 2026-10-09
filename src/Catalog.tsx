@@ -17,6 +17,7 @@ export interface Product {
   bestseller: boolean
   stock?: number
   collection?: string
+  sizesStock?: Record<string, number>
 }
 
 export const money = (amount: number) => `S/. ${amount.toFixed(2)}`
@@ -43,6 +44,7 @@ function normalizeProduct(p: any): Product {
     bestseller: p.bestseller ?? false,
     stock: p.stock !== undefined ? Number(p.stock) : 10,
     collection: p.collection || p.coleccion || "",
+    sizesStock: p.sizesStock || undefined,
   }
 }
 
@@ -167,27 +169,31 @@ export default function Catalog({
 
   const requestedCategory = (params.get("category") || "Todos").trim()
 
-// Reconoce tanto "Nuevos Ingresos" como "New Arrivals" de forma insensible a mayúsculas
-const matchedCategory = categories.find((cat) => {
-  const cLower = cat.toLowerCase()
-  const rLower = requestedCategory.toLowerCase()
-  if (cLower === rLower) return true
-  if (cat === "Nuevos Ingresos" && (rLower === "new arrivals" || rLower === "new-arrivals")) return true
-  return false
-})
-
-const filter = matchedCategory || "Todos"
-
-// Función para cambiar de categoría al hacer clic en los botones
-const setFilter = (category: string) =>
-  setParams(category === "Todos" ? {} : { category }, {
-    preventScrollReset: true,
+  // Reconoce tanto "Nuevos Ingresos" como "New Arrivals" de forma insensible a mayúsculas
+  const matchedCategory = categories.find((cat) => {
+    const cLower = cat.toLowerCase()
+    const rLower = requestedCategory.toLowerCase()
+    if (cLower === rLower) return true
+    if (
+      cat === "Nuevos Ingresos" &&
+      (rLower === "new arrivals" || rLower === "new-arrivals")
+    )
+      return true
+    return false
   })
 
-// Filtrado compuesto:
-// - Si hay slug, sólo muestra los productos asignados a esa colección activa.
-// - Si no hay slug, muestra todas las prendas (incluidas las que no tienen colección).
-const visible = catalogProducts
+  const filter = matchedCategory || "Todos"
+
+  // Función para cambiar de categoría al hacer clic en los botones
+  const setFilter = (category: string) =>
+    setParams(category === "Todos" ? {} : { category }, {
+      preventScrollReset: true,
+    })
+
+  // Filtrado compuesto:
+  // - Si hay slug, sólo muestra los productos asignados a esa colección activa.
+  // - Si no hay slug, muestra todas las prendas (incluidas las que no tienen colección).
+  const visible = catalogProducts
     .map((product, index) => ({ product, index }))
     .filter(({ product }) => {
       if (!slug) return true
@@ -255,7 +261,9 @@ const visible = catalogProducts
         </div>
         <span aria-live="polite">{visible.length} PRODUCTOS</span>
       </div>
-      <div className="catalog-grid">
+
+      {/* Grid con clave reactiva para disparar la animación de entrada suave */}
+      <div className="catalog-grid" key={`${slug || "shop"}-${filter}`}>
         {!visible.length && (
           <p className="catalog-empty">
             Esta colección todavía no tiene prendas disponibles.

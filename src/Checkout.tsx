@@ -4,6 +4,44 @@ import { money, type Product } from './Catalog'
 import { useLanguage } from './Language'
 
 export type CartItem = { index: number; size: string }
+
+export interface DistrictInfo {
+  name: string
+  code: string
+  x: number
+  y: number
+}
+
+export const LIMA_DISTRICTS: DistrictInfo[] = [
+  // Playas y Costa Sur
+  { name: 'San Bartolo', code: 'SBT', x: 387, y: 178 },
+  { name: 'Punta Hermosa', code: 'PTH', x: 370, y: 165 },
+  { name: 'Punta Negra', code: 'PTN', x: 378, y: 172 },
+  { name: 'Santa María del Mar', code: 'SMM', x: 395, y: 185 },
+  { name: 'Pucusana', code: 'PUC', x: 405, y: 195 },
+  { name: 'Lurín', code: 'LUR', x: 358, y: 155 },
+
+  // Costa Verde & Lima Centro / Residencial
+  { name: 'Miraflores', code: 'MFL', x: 295, y: 95 },
+  { name: 'Barranco', code: 'BCO', x: 310, y: 110 },
+  { name: 'Chorrillos', code: 'CHO', x: 320, y: 125 },
+  { name: 'San Isidro', code: 'SIS', x: 288, y: 88 },
+  { name: 'Santiago de Surco', code: 'SUR', x: 325, y: 105 },
+  { name: 'San Borja', code: 'SBJ', x: 315, y: 92 },
+  { name: 'La Molina', code: 'MOL', x: 345, y: 85 },
+  { name: 'Surquillo', code: 'SQO', x: 300, y: 98 },
+  { name: 'Magdalena del Mar', code: 'MAG', x: 280, y: 86 },
+  { name: 'San Miguel', code: 'SMG', x: 270, y: 80 },
+  { name: 'Jesús María', code: 'JMA', x: 278, y: 75 },
+  { name: 'Lince', code: 'LNC', x: 285, y: 78 },
+  { name: 'Pueblo Libre', code: 'PLB', x: 272, y: 72 },
+  { name: 'Lima (Cercado)', code: 'LIM', x: 260, y: 55 },
+  { name: 'San Juan de Miraflores', code: 'SJM', x: 335, y: 125 },
+  { name: 'Villa El Salvador', code: 'VES', x: 345, y: 145 },
+  { name: 'Los Olivos', code: 'LOL', x: 245, y: 32 },
+  { name: 'San Martín de Porres', code: 'SMP', x: 240, y: 38 },
+]
+
 export interface DemoOrder {
   number: string
   items: CartItem[]
@@ -11,13 +49,20 @@ export interface DemoOrder {
   shipping: number
   tax: number
   total: number
+  district?: string
+  districtCode?: string
+  address?: string       
+  customerName?: string 
+  customerEmail?: string
 }
 
 export default function Checkout({ products, cart, onComplete }: { products: Product[]; cart: CartItem[]; onComplete: (order: DemoOrder) => void }) {
   const { translate, t } = useLanguage()
   const [shippingMethod, setShippingMethod] = useState('standard')
   const [documentType, setDocumentType] = useState('DNI')
+  const [selectedDistrictName, setSelectedDistrictName] = useState('San Bartolo')
   const [loginNotice, setLoginNotice] = useState(false)
+
   const subtotalCents = cart.reduce((sum, item) => sum + Math.round(products[item.index].price * 100), 0)
   const shippingCents = shippingMethod === 'express' ? 3000 : subtotalCents >= 30000 ? 0 : 1500
   const taxCents = Math.round(subtotalCents * .18)
@@ -32,7 +77,29 @@ export default function Checkout({ products, cart, onComplete }: { products: Pro
       <div className="demo-notice"><span>PROTOTIPO / SIN COBROS</span><p>No ingreses datos reales. Este checkout usa una tarjeta de prueba y no procesa pagos ni envía correos.</p></div>
       <form id="checkout-form" onSubmit={event => {
         event.preventDefault()
-        onComplete({ number: `GS-${Date.now().toString(36).toUpperCase()}`, items: cart.map(item => ({ ...item })), subtotal: subtotalCents / 100, shipping: shippingCents / 100, tax: taxCents / 100, total: totalCents / 100 })
+
+        const formData = new FormData(event.currentTarget)
+        const correoEscrito = (formData.get('email') as string)?.trim().toLowerCase() || '' // <--- AGREGAR ESTA LÍNEA
+        const direccionEscrita = (formData.get('address') as string)?.trim() || ''
+        const nombre = (formData.get('firstName') as string)?.trim() || ''
+        const apellidos = (formData.get('lastName') as string)?.trim() || ''
+        const nombreCompleto = `${nombre} ${apellidos}`.trim()
+
+        const districtObj = LIMA_DISTRICTS.find(d => d.name === selectedDistrictName) || LIMA_DISTRICTS[0]
+
+        onComplete({
+          number: `GS-${Date.now().toString(36).toUpperCase()}`,
+          items: cart.map(item => ({ ...item })),
+          subtotal: subtotalCents / 100,
+          shipping: shippingCents / 100,
+          tax: taxCents / 100,
+          total: totalCents / 100,
+          district: districtObj.name,
+          districtCode: districtObj.code,
+          address: direccionEscrita, 
+          customerName: nombreCompleto || 'Cliente', 
+          customerEmail: correoEscrito,
+        })
       }}>
         <section className="checkout-form-section"><div className="checkout-section-title"><span>01</span><h2>Información de Contacto</h2></div>
           <label className="checkout-field contact-email">Correo electrónico<input type="email" name="email" placeholder="tu@email.com" autoComplete="off" required aria-describedby="email-help"/></label>
@@ -47,9 +114,25 @@ export default function Checkout({ products, cart, onComplete }: { products: Pro
             <label className="checkout-field">Tipo de Documento<select value={documentType} onChange={event => setDocumentType(event.target.value)} name="documentType"><option value="DNI">DNI</option><option value="CE">CE</option></select></label>
             <label className="checkout-field">Número de Documento<input name="documentNumber" inputMode="numeric" placeholder={documentType === 'DNI' ? '8 dígitos' : '9 a 12 dígitos'} pattern={documentType === 'DNI' ? '[0-9]{8}' : '[0-9]{9,12}'} maxLength={documentType === 'DNI' ? 8 : 12} autoComplete="off" required/></label>
             <label className="checkout-field full-width">Dirección completa<input name="address" placeholder="Calle, número, departamento o referencia" autoComplete="off" required maxLength={180}/></label>
-            <label className="checkout-field">Distrito / Provincia<input name="district" placeholder="Ej. Miraflores, Lima" autoComplete="off" required maxLength={100}/></label>
-            <label className="checkout-field">Teléfono<input name="phone" type="tel" inputMode="tel" placeholder="Ej. 999 999 999" pattern="[0-9+ ()-]{9,16}" maxLength={16} autoComplete="off" required/></label>
-          </div>
+            
+            {/* Selector de Distrito conectado a Lima y Lima Metropolitana */}
+            <label className="checkout-field">
+              Distrito (Lima Metropolitana)
+              <select
+                name="district"
+                value={selectedDistrictName}
+                onChange={event => setSelectedDistrictName(event.target.value)}
+                required
+              >
+                {LIMA_DISTRICTS.map(dist => (
+                  <option key={dist.name} value={dist.name}>
+                    {dist.name} ({dist.code})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="checkout-field">Teléfono<input name="phone" type="tel" inputMode="tel" placeholder="Ej. 999 999 999" pattern="[0-9\s\+\-]{9,16}" maxLength={16} autoComplete="off" required/></label>          </div>
           <fieldset className="shipping-options"><legend>Métodos de Envío</legend>
             <label className={shippingMethod === 'standard' ? 'selected' : ''}><input type="radio" name="shipping" value="standard" checked={shippingMethod === 'standard'} onChange={() => setShippingMethod('standard')}/><span><strong>Envío Estándar</strong><small>3-5 días hábiles</small></span><strong>{subtotalCents >= 30000 ? t('Gratis') : money(15)}</strong></label>
             <label className={shippingMethod === 'express' ? 'selected' : ''}><input type="radio" name="shipping" value="express" checked={shippingMethod === 'express'} onChange={() => setShippingMethod('express')}/><span><strong>Envío Express</strong><small>24 horas</small></span><strong>{money(30)}</strong></label>
@@ -68,22 +151,70 @@ export default function Checkout({ products, cart, onComplete }: { products: Pro
 export function Confirmation({ order, products }: { order: DemoOrder | null; products: Product[] }) {
   const { translate, t } = useLanguage()
   if (!order) return translate(<section className="checkout-empty"><h1>Aún no hay un pedido confirmado.</h1><Link className="dark-button" to="/shop">VOLVER A LA TIENDA <span>→</span></Link></section>)
+
+  // Identificar las coordenadas y código del distrito seleccionado
+  const dest = LIMA_DISTRICTS.find(d => d.name === order.district) || LIMA_DISTRICTS.find(d => d.code === order.districtCode) || LIMA_DISTRICTS[0]
+
   return translate(<section className="order-confirmation cinematic-confirmation">
     <img className="confirmation-ocean" src="https://images.unsplash.com/photo-1636353990836-b20b196dd41e?auto=format&fit=crop&w=2400&q=85" alt="Océano y playa al atardecer"/>
     <div className="confirmation-vignette"/>
     <div className="cinematic-title"><p className="eyebrow">GONE SURFING / CONFIRMACIÓN DE PRUEBA</p><div className="cinematic-check"><svg viewBox="0 0 32 32" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m7 16 6 6L25 10"/></svg></div><h1>El ruido se apaga.</h1><p>{t('Tu orden')} <strong>#{order.number}</strong> {t('está confirmada.')}</p></div>
     <div className="surf-pass-glass">
       <div className="surf-pass"><div className="pass-header"><span className="pass-brand">GONE SURFING</span><span className="pass-type">COASTAL BOARDING PASS<br/><span>ONE WAY / OFFLINE</span></span></div>
-        <div className="pass-destination"><div><span>ORIGEN</span><strong>LIM</strong><p>EL RUIDO</p></div><span className="pass-route-arrow">⟶</span><div><span>DESTINO</span><strong>SBT</strong><p>SAN BARTOLO</p></div><div className="pass-barcode" aria-hidden="true"><span/></div></div>
+        <div className="pass-destination">
+          <div><span>ORIGEN</span><strong>LIM</strong><p>EL RUIDO</p></div>
+          <span className="pass-route-arrow">⟶</span>
+          <div>
+            <span>DESTINO</span>
+            <strong>{dest.code}</strong>
+            <p>{dest.name.toUpperCase()}</p>
+          </div>
+          <div className="pass-barcode" aria-hidden="true"><span/></div>
+        </div>
         <div className="pass-metadata"><div><span>ORDEN</span><strong>{order.number}</strong></div><div><span>ACCESO</span><strong>SURF CULTURE</strong></div><div><span>ESTADO</span><strong>CONFIRMADO / DEMO</strong></div></div>
         <div className="pass-perforation"><span>YOUR NEXT CHAPTER STARTS HERE</span></div>
         <div className="pass-items">{order.items.map((item, position) => <div key={position}><span>{products[item.index].name}<small>{t('Talla:')} {item.size}</small></span><strong>{money(products[item.index].price)}</strong></div>)}</div>
         <div className="pass-total"><span>Total de prueba</span><strong>{money(order.total)}</strong></div>
       </div>
       <div className="tracking-panel"><div className="tracking-header"><span>RUMBO A LA COSTA</span><span>RUTA ILUSTRATIVA</span></div>
-        <div className="tracking-map" role="img" aria-label="Mapa ilustrativo de una ruta desde Lima a San Bartolo, sin rastreo en vivo">
-          <svg viewBox="0 0 600 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><pattern id="map-grid" width="35" height="35" patternUnits="userSpaceOnUse"><path d="M35 0H0V35" fill="none" stroke="#ffffff" strokeOpacity=".045"/></pattern></defs><rect width="600" height="220" fill="#171e1d"/><path d="M0 0H182L191 24 177 55 215 90 201 119 234 152 224 177 253 220H0Z" fill="#0c1518"/><rect width="600" height="220" fill="url(#map-grid)"/><g fill="none" stroke="#5d685f" strokeOpacity=".3" strokeWidth="1"><path d="M200 0 280 62 305 124 383 156 402 220M250 0 338 60 350 140 437 192 460 220M350 0 385 70 437 115 488 220M175 40 600 62M210 93 600 123M230 170 600 193"/><path d="M500 0 445 56 515 110 480 178 538 220M290 8 260 52 299 103 273 172 320 220"/></g><path d="m253 45 31 30 3 30 34 23 9 26 57 24" fill="none" stroke="#b7c4ad" strokeWidth="2" strokeDasharray="5 5"/><circle cx="253" cy="45" r="4" fill="#b7c4ad"/><circle className="map-pin-halo" cx="387" cy="178" r="15" fill="#b7c4ad" fillOpacity=".15"/><circle cx="387" cy="178" r="5" fill="#d6e0cd"/><g fill="#abb2ab" fontFamily="Inter, sans-serif" fontSize="9" letterSpacing="1.5"><text x="270" y="35">LIMA</text><text x="403" y="180">SAN BARTOLO</text><text x="32" y="115" fill="#72838a" fontSize="8">PACIFIC OCEAN</text></g></svg>
-          <div className="map-status"><span/><p>Tus olas están en camino</p></div>
+        <div className="tracking-map" role="img" aria-label={`Mapa ilustrativo de la ruta desde Lima hacia ${dest.name}`}>
+          <svg viewBox="0 0 600 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+              <pattern id="map-grid" width="35" height="35" patternUnits="userSpaceOnUse">
+                <path d="M35 0H0V35" fill="none" stroke="#ffffff" strokeOpacity=".045"/>
+              </pattern>
+            </defs>
+            <rect width="600" height="220" fill="#171e1d"/>
+            <path d="M0 0H182L191 24 177 55 215 90 201 119 234 152 224 177 253 220H0Z" fill="#0c1518"/>
+            <rect width="600" height="220" fill="url(#map-grid)"/>
+            <g fill="none" stroke="#5d685f" strokeOpacity=".3" strokeWidth="1">
+              <path d="M200 0 280 62 305 124 383 156 402 220M250 0 338 60 350 140 437 192 460 220M350 0 385 70 437 115 488 220M175 40 600 62M210 93 600 123M230 170 600 193"/>
+              <path d="M500 0 445 56 515 110 480 178 538 220M290 8 260 52 299 103 273 172 320 220"/>
+            </g>
+            
+            {/* Trazo punteado dinámico hacia las coordenadas del distrito seleccionado */}
+            <path
+              d={`M 253 45 Q ${(253 + dest.x) / 2 - 12} ${(45 + dest.y) / 2} ${dest.x} ${dest.y}`}
+              fill="none"
+              stroke="#b7c4ad"
+              strokeWidth="2"
+              strokeDasharray="5 5"
+            />
+            {/* Punto de origen: Lima Centro */}
+            <circle cx="253" cy="45" r="4" fill="#b7c4ad"/>
+            
+            {/* Halo y Pin dinámico del Distrito de Destino */}
+            <circle className="map-pin-halo" cx={dest.x} cy={dest.y} r="15" fill="#b7c4ad" fillOpacity=".15"/>
+            <circle cx={dest.x} cy={dest.y} r="5" fill="#d6e0cd"/>
+            
+            {/* Textos del mapa */}
+            <g fill="#abb2ab" fontFamily="Inter, sans-serif" fontSize="9" letterSpacing="1.5">
+              <text x="270" y="35">LIMA</text>
+              <text x={dest.x + 16} y={dest.y + 4}>{dest.name.toUpperCase()}</text>
+              <text x="32" y="115" fill="#72838a" fontSize="8">PACIFIC OCEAN</text>
+            </g>
+          </svg>
+          <div className="map-status"><span/><p>Tus olas están en camino a {dest.name}</p></div>
         </div>
       </div>
       <div className="pass-demo-note"><span>ESTADO DE ÉXITO SIMULADO</span><p>No se ha realizado ningún cobro ni se ha enviado una boleta o correo real.</p></div>
